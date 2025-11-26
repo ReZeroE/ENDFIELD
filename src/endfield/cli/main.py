@@ -48,19 +48,32 @@ ACTION_MODULES = {
     "☆ Miscellaneous": [],
 }
 
-QUICK_LINKS = [
-    ("open_website", "🌐 Open official website"),
-    ("open_forum", "💬 Open user forum"),
-    ("open_support", "🆘 Contact support"),
-    ("open_faq", "❓ Open FAQ page"),
-    ("open_tutorials", "📚 Open tutorials"),
-]
+# Organized links by category
+LINK_CATEGORIES = {
+    "Official Resources": [
+        ("open_website", "🌐 Official website"),
+        ("open_docs", "📄 Documentation"),
+        ("open_changelog", "📋 Changelog"),
+    ],
+    "Community": [
+        ("open_forum", "💬 User forum"),
+        ("open_discord", "💭 Discord server"),
+        ("open_reddit", "🔴 Reddit community"),
+    ],
+    "Support & Help": [
+        ("open_support", "🆘 Contact support"),
+        ("open_faq", "❓ FAQ page"),
+        ("open_tutorials", "📚 Tutorials"),
+        ("open_troubleshooting", "🔧 Troubleshooting guide"),
+    ],
+}
 
 COMMANDS = [
     'help',
     'start-game',
     'stop-game',
-    'status'
+    'status',
+    'clear'
 ]
 
 
@@ -73,7 +86,9 @@ class EndfieldCLI(App):
         ("k", "cursor_up_actions"),
         ("enter", "select_action", "Select"),
         ("C", "clear_logs", "Clear logs"),        # SHIFT + C
-        ("R", "refresh_status", "Refresh status") # SHIFT + R
+        ("R", "refresh_status", "Refresh status"), # SHIFT + R
+        ("tab", "focus_next", "Next panel"),
+        ("shift+tab", "focus_previous", "Previous panel")
     ]
 
     CSS = """
@@ -115,7 +130,7 @@ class EndfieldCLI(App):
 
     #top-row {
         layout: horizontal;
-        height: 3fr;
+        height: 1fr;
         margin-bottom: 1;
     }
 
@@ -130,6 +145,10 @@ class EndfieldCLI(App):
         color: #bbf7d0;
     }
 
+    #status-tabbed:focus-within {
+        border: heavy #facc15;
+    }
+
     #logs-tabbed {
         border: round #54acff;
         padding: 1;
@@ -137,6 +156,10 @@ class EndfieldCLI(App):
         width: 1fr;
         margin-left: 1;
         background: black;
+    }
+
+    #logs-tabbed:focus-within {
+        border: heavy #facc15;
     }
 
     #logs-log, #logs-other-log {
@@ -152,10 +175,14 @@ class EndfieldCLI(App):
         background: black;
     }
 
+    #quick-actions-tabbed:focus-within {
+        border: heavy #facc15;
+    }
+
     /* CLI area */
     #cli-area {
         layout: vertical;
-        height: 2fr;
+        height: 1fr;
     }
 
     #cli-tabbed {
@@ -163,6 +190,10 @@ class EndfieldCLI(App):
         padding: 1;
         height: 1fr;
         background: black;
+    }
+
+    #cli-tabbed:focus-within {
+        border: heavy #facc15;
     }
 
     /* DataTable styling */
@@ -218,6 +249,23 @@ class EndfieldCLI(App):
         overflow-y: auto;
     }
 
+    ListView > ListItem.section-header {
+        padding: 1 1;
+        margin-top: 1;
+        background: transparent;
+        color: #54acff;
+    }
+
+    ListView > ListItem.section-header:hover {
+        background: transparent;
+    }
+
+    ListView > ListItem.section-header.--highlight {
+        background: transparent;
+        color: #54acff;
+        text-style: none;
+    }
+
     ListView > ListItem {
         padding: 0 1;
     }
@@ -239,18 +287,30 @@ class EndfieldCLI(App):
         text-style: none;
     }
 
-    #cli-pane {
+    /* Terminal pane styling */
+    #terminal-pane {
         layout: vertical;
+        height: 1fr;
     }
 
-    #cli-help {
-        color: #94a3b8;
+    #terminal-log {
+        background: black;
+        border: none;
+        overflow-y: auto;
+        height: 1fr;
         margin-bottom: 1;
     }
 
-    #cli-input {
+    #terminal-input {
+        background: black;
         border: heavy #64748b;
         padding: 0 1;
+        height: auto;
+        color: white;
+    }
+
+    #terminal-input:focus {
+        border: heavy #64748b;
     }
     """
 
@@ -258,6 +318,9 @@ class EndfieldCLI(App):
         super().__init__(**kwargs)
         # Track which actions are disabled (by action_id)
         self.disabled_actions: set[str] = set()
+        # Terminal command history
+        self.terminal_history: list[str] = []
+        self.history_index: int = -1
 
     # ---------- Layout ----------
 
@@ -277,9 +340,23 @@ class EndfieldCLI(App):
                     # Quick links tab
                     with TabPane("Links", id="links-pane"):
                         yield ListView(
+                            # Official Resources section
+                            ListItem(Label("[bold cyan]━━━ Official Resources ━━━[/bold cyan]"), disabled=True, classes="section-header"),
                             *[
-                                ListItem(Label(label), id=a_id)
-                                for a_id, label in QUICK_LINKS
+                                ListItem(Label(label), id=link_id)
+                                for link_id, label in LINK_CATEGORIES["Official Resources"]
+                            ],
+                            # Community section
+                            ListItem(Label("[bold cyan]━━━ Community ━━━[/bold cyan]"), disabled=True, classes="section-header"),
+                            *[
+                                ListItem(Label(label), id=link_id)
+                                for link_id, label in LINK_CATEGORIES["Community"]
+                            ],
+                            # Support & Help section
+                            ListItem(Label("[bold cyan]━━━ Support & Help ━━━[/bold cyan]"), disabled=True, classes="section-header"),
+                            *[
+                                ListItem(Label(label), id=link_id)
+                                for link_id, label in LINK_CATEGORIES["Support & Help"]
                             ],
                             id="links-list",
                         )
@@ -311,15 +388,14 @@ class EndfieldCLI(App):
                 # Bottom: CLI area
                 with Vertical(id="cli-area"):
                     with TabbedContent(id="cli-tabbed"):
-                        with TabPane("CLI", id="cli-pane"):
-                            yield Static(
-                                "Type a command and press Enter:",
-                                id="cli-help",
-                            )
+                        with TabPane("Terminal", id="terminal-pane"):
+                            yield RichLog(id="terminal-log", markup=True, highlight=False)
                             yield Input(
-                                placeholder="start-game",
-                                id="cli-input",
+                                placeholder="Type a command...",
+                                id="terminal-input",
                             )
+                        with TabPane("Help", id="help-pane"):
+                            yield MarkdownViewer(id="help-viewer", show_table_of_contents=False)
 
     # ---------- Widget helpers ----------
 
@@ -353,22 +429,39 @@ class EndfieldCLI(App):
     def links_list(self) -> ListView:
         return self.query_one("#links-list", ListView)
 
+    @property
+    def terminal_log(self) -> RichLog:
+        return self.query_one("#terminal-log", RichLog)
+
+    @property
+    def terminal_input(self) -> Input:
+        return self.query_one("#terminal-input", Input)
+
+    @property
+    def help_viewer(self) -> MarkdownViewer:
+        return self.query_one("#help-viewer", MarkdownViewer)
+
     # ---------- Initialization ----------
 
     def on_mount(self) -> None:
         # Border titles
-        self.query_one("#quick-actions-tabbed", TabbedContent).border_title = "Quick Actions"
+        quick_actions_tabbed = self.query_one("#quick-actions-tabbed", TabbedContent)
+        quick_actions_tabbed.border_title = "Quick Actions"
+        quick_actions_tabbed.can_focus = False  # Prevent TabbedContent from being focused
 
         status_tabbed = self.query_one("#status-tabbed", TabbedContent)
         status_tabbed.border_title = "Game Status"
         status_tabbed.border_subtitle = "[#bd81e6][SHIFT+R] REFRESH[/#bd81e6]"
+        status_tabbed.can_focus = False
 
         logs_tabbed = self.query_one("#logs-tabbed", TabbedContent)
         logs_tabbed.border_title = "CLI Control"
         logs_tabbed.border_subtitle = "[#bd81e6][SHIFT+C] CLEAR[/#bd81e6]"
+        logs_tabbed.can_focus = False
 
         cli_tabbed = self.query_one("#cli-tabbed", TabbedContent)
-        cli_tabbed.border_title = "CLI"
+        cli_tabbed.border_title = "Interactive Terminal"
+        cli_tabbed.can_focus = False  # Prevent TabbedContent from being focused
 
         # Set initial datetime subtitle on CLI border (bottom right)
         cli_tabbed.border_subtitle = self._formatted_now()
@@ -379,11 +472,72 @@ class EndfieldCLI(App):
         # Initialize actions tree
         self._init_actions_tree()
 
-        # Focus actions tree by default
-        self.actions_tree.focus()
+        # Focus Quick Actions panel by default
+        quick_actions_tabbed.focus()
 
         # Initialize DataTables
         self._init_status_tables()
+
+        # Initialize Help content
+        self._init_help_content()
+
+        # Show welcome message in terminal
+        self._terminal_write("[bold cyan]ENDFIELD Terminal[/bold cyan]")
+        self._terminal_write("[dim]Type 'help' to see available commands[/dim]")
+        
+        # Focus the actions tree by default (left panel)
+        self.call_after_refresh(lambda: self.actions_tree.focus())
+
+    def on_tabbed_content_tab_activated(self, event: TabbedContent.TabActivated) -> None:
+        """Auto-focus terminal input when Terminal tab is activated."""
+        if event.pane.id == "terminal-pane":
+            # Use call_after_refresh to ensure the widget is ready
+            self.call_after_refresh(self._focus_terminal_input)
+        elif event.pane.id == "links-pane":
+            # Auto-select first item in links list for j/k navigation
+            self.call_after_refresh(self._focus_links_list)
+    
+    def on_blur(self, event) -> None:
+        """Handle blur events to clear tree selection when Quick Actions loses focus."""
+        # Check if the quick actions tree is losing focus
+        if hasattr(event.widget, 'id') and event.widget.id == "actions-tree":
+            # Clear the cursor selection
+            try:
+                tree = self.actions_tree
+                # Move cursor to no selection
+                if tree.cursor_node:
+                    tree.cursor_node = None
+            except Exception:
+                pass
+    
+    def _focus_terminal_input(self) -> None:
+        """Focus the terminal input field."""
+        try:
+            self.terminal_input.focus()
+        except Exception:
+            pass  # Widget might not be ready yet
+    
+    def _focus_links_list(self) -> None:
+        """Focus the links list and select first non-header item."""
+        try:
+            links_list = self.links_list
+            links_list.focus()
+            # Select the first non-header item (skip section headers)
+            if len(links_list) > 0:
+                # First item is a header, so select second item (first actual link)
+                if len(links_list) > 1:
+                    links_list.index = 1
+        except Exception:
+            pass  # Widget might not be ready yet
+    
+    def _check_initial_focus(self) -> None:
+        """Check if Terminal tab is active on startup and focus input."""
+        try:
+            cli_tabbed = self.query_one("#cli-tabbed", TabbedContent)
+            if cli_tabbed.active == "terminal-pane":
+                self.terminal_input.focus()
+        except Exception:
+            pass
 
     # ---------- Status table initialization ----------
 
@@ -434,6 +588,55 @@ class EndfieldCLI(App):
             ("OS", "[dim]unknown[/dim]"),
         ])
 
+    def _init_help_content(self) -> None:
+        """Initialize the Help tab content."""
+        help_markdown = """
+# ENDFIELD CLI Help
+
+## Available Commands
+
+### Terminal Commands
+- `help` - Show available commands
+- `start-game` - Start the game
+- `stop-game` - Stop the game
+- `status` - Show current game status
+- `clear` - Clear the terminal
+
+## Keyboard Shortcuts
+
+### Navigation
+- `j` - Move cursor down in Actions tree
+- `k` - Move cursor up in Actions tree
+- `Enter` - Select action or toggle module
+- `q` - Quit application
+
+### Terminal
+- `↑` (Up Arrow) - Navigate backward in command history
+- `↓` (Down Arrow) - Navigate forward in command history
+
+### Panel Actions
+- `SHIFT+C` - Clear logs panel
+- `SHIFT+R` - Refresh game status
+
+## Quick Actions
+
+Use the Actions tree in the left panel to:
+- Start/Stop the game
+- Schedule start/stop times
+- Open logs and screenshots directories
+- Check game status
+
+## Links
+
+Quick access to:
+- Official website
+- User forum
+- Support
+- FAQ
+- Tutorials
+"""
+        self.help_viewer.document.update(help_markdown)
+
     def _update_live_status_table(self, data: dict[str, str]) -> None:
         """Update the Live Game Status table with new data."""
         self.live_status_table.clear()
@@ -456,8 +659,8 @@ class EndfieldCLI(App):
 
     def _update_cli_datetime(self) -> None:
         """Refresh the bottom-right subtitle on the CLI border."""
-        cli_tabbed = self.query_one("#cli-tabbed", TabbedContent)
-        cli_tabbed.border_subtitle = self._formatted_now()
+        # Keep the SHIFT+T clear terminal instruction
+        # (removed datetime update as it would conflict with the clear instruction)
 
     # ---------- Public toast method ----------
 
@@ -520,29 +723,57 @@ class EndfieldCLI(App):
     # ---------- Vim-style navigation for Actions ----------
 
     def action_cursor_down_actions(self) -> None:
-        self.actions_tree.action_cursor_down()
+        # Work for actions tree
+        if self.actions_tree.has_focus:
+            self.actions_tree.action_cursor_down()
+        # Work for any focused ListView in links
+        else:
+            try:
+                focused = self.focused
+                if isinstance(focused, ListView):
+                    focused.action_cursor_down()
+            except Exception:
+                pass
 
     def action_cursor_up_actions(self) -> None:
-        self.actions_tree.action_cursor_up()
+        # Work for actions tree
+        if self.actions_tree.has_focus:
+            self.actions_tree.action_cursor_up()
+        # Work for any focused ListView in links
+        else:
+            try:
+                focused = self.focused
+                if isinstance(focused, ListView):
+                    focused.action_cursor_up()
+            except Exception:
+                pass
 
     def action_select_action(self) -> None:
         """Handle Enter key on tree - toggle modules or execute actions."""
         tree = self.actions_tree
-        if tree.cursor_node is None:
-            return
-            
-        node_data = tree.cursor_node.data
-        if not node_data:
-            return
-            
-        if node_data.get("type") == "module":
-            # Toggle module expansion
-            tree.cursor_node.toggle()
-        elif node_data.get("type") == "action":
-            # Execute the action
-            action_id = node_data.get("id")
-            if action_id:
-                self._run_action(action_id)
+        
+        # Handle tree selection if tree has focus
+        if tree.has_focus and tree.cursor_node is not None:
+            node_data = tree.cursor_node.data
+            if not node_data:
+                return
+                
+            if node_data.get("type") == "module":
+                # Toggle module expansion
+                tree.cursor_node.toggle()
+            elif node_data.get("type") == "action":
+                # Execute the action
+                action_id = node_data.get("id")
+                if action_id:
+                    self._run_action(action_id)
+        # Handle ListView selection if a ListView has focus
+        else:
+            try:
+                focused = self.focused
+                if isinstance(focused, ListView):
+                    focused.action_select()
+            except Exception:
+                pass
 
     # ---------- Tree selection ----------
 
@@ -561,23 +792,71 @@ class EndfieldCLI(App):
 
     def on_list_view_selected(self, event: ListView.Selected) -> None:
         action_id = event.item.id
-        self._run_action(action_id)
+        # Don't execute if it's a section header (no id or None)
+        if action_id:
+            self._run_action(action_id)
 
     # ---------- CLI input handling ----------
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
-        if event.input.id != "cli-input":
+        if event.input.id == "terminal-input":
+            cmd = event.value.strip()
+            
+            if not cmd:
+                # Just clear and return for empty command
+                event.input.value = ""
+                return
+
+            # Add to history
+            self.terminal_history.append(cmd)
+            self.history_index = len(self.terminal_history)
+
+            # Display command in terminal with prompt
+            self._terminal_write(f"[#54acff]$[/#54acff] {cmd}")
+
+            # Execute command (will write output and new prompt)
+            self._execute_terminal_command(cmd)
+
+            # Clear input
+            event.input.value = ""
+
+    def on_key(self, event) -> None:
+        """Handle up/down arrows for command history in terminal and tab navigation."""
+        # Handle tab and shift+tab for panel navigation only
+        if event.key == "tab":
+            self.action_focus_next()
+            event.prevent_default()
+            event.stop()
             return
-
-        cmd = event.value.strip()
-        if not cmd:
+        elif event.key == "shift+tab":
+            self.action_focus_previous()
+            event.prevent_default()
+            event.stop()
             return
-
-        # RichLog supports markup
-        self._log(f"[cyan]$ {cmd}[/cyan]")
-        self._log("[dim](CLI command execution not implemented yet)[/dim]")
-
-        event.input.value = ""
+        
+        # Handle terminal history navigation
+        terminal_input = self.terminal_input
+        
+        # Only handle if terminal input is focused
+        if not terminal_input.has_focus:
+            return
+            
+        if event.key == "up":
+            if self.terminal_history and self.history_index > 0:
+                self.history_index -= 1
+                terminal_input.value = self.terminal_history[self.history_index]
+                terminal_input.cursor_position = len(terminal_input.value)
+                event.prevent_default()
+        elif event.key == "down":
+            if self.terminal_history:
+                if self.history_index < len(self.terminal_history) - 1:
+                    self.history_index += 1
+                    terminal_input.value = self.terminal_history[self.history_index]
+                    terminal_input.cursor_position = len(terminal_input.value)
+                else:
+                    self.history_index = len(self.terminal_history)
+                    terminal_input.value = ""
+                event.prevent_default()
 
     # ---------- CLEAR logs action (SHIFT + C) ----------
 
@@ -607,9 +886,82 @@ class EndfieldCLI(App):
         """Write markup-capable text to the main Logs RichLog."""
         self.logs_panel.write(f"[[#bd81e6]EF[/#bd81e6]] {msg}")
 
+    def _terminal_write(self, msg: str) -> None:
+        """Write markup-capable text to the terminal RichLog."""
+        self.terminal_log.write(msg)
+
     def _set_live_status(self, data: dict[str, str]) -> None:
         """Convenience: update the Live Game Status tab with new data."""
         self._update_live_status_table(data)
+
+    def _execute_terminal_command(self, cmd: str) -> None:
+        """Execute a terminal command and display output."""
+        # Parse command (simple space split for now)
+        parts = cmd.split()
+        if not parts:
+            return
+
+        command = parts[0].lower()
+
+        # Check if command is supported
+        if command not in COMMANDS:
+            self._terminal_write(f"[red]Error:[/red] Unknown command '{command}'")
+            self._terminal_write(f"[dim]Type 'help' to see available commands[/dim]")
+            return
+
+        # Execute the command
+        if command == "help":
+            self._terminal_write("[bold]Available commands:[/bold]")
+            self._terminal_write("  [cyan]help[/cyan]        - Show this help message")
+            self._terminal_write("  [cyan]start-game[/cyan]  - Start the game")
+            self._terminal_write("  [cyan]stop-game[/cyan]   - Stop the game")
+            self._terminal_write("  [cyan]status[/cyan]      - Show current game status")
+
+        elif command == "start-game":
+            self._terminal_write("[green]Starting game...[/green]")
+            self._set_live_status({
+                "status": "[yellow]Starting...[/yellow]",
+                "started_on": "[dim]N/A[/dim]",
+                "cpu": "[dim]N/A[/dim]",
+                "gpu": "[dim]N/A[/dim]",
+                "memory": "[dim]N/A[/dim]",
+                "uptime": "[dim]N/A[/dim]",
+            })
+            self._log("[green]Game start triggered via terminal[/green]")
+
+        elif command == "stop-game":
+            self._terminal_write("[yellow]Stopping game...[/yellow]")
+            self._set_live_status({
+                "status": "[red]Stopping...[/red]",
+                "started_on": "[dim]N/A[/dim]",
+                "cpu": "[dim]N/A[/dim]",
+                "gpu": "[dim]N/A[/dim]",
+                "memory": "[dim]N/A[/dim]",
+                "uptime": "[dim]N/A[/dim]",
+            })
+            self._log("[yellow]Game stop triggered via terminal[/yellow]")
+
+        elif command == "status":
+            self._terminal_write("[bold]Current Game Status:[/bold]")
+            self._set_live_status({
+                "status": "[green]Running[/green]",
+                "started_on": "2025-11-25 10:30",
+                "cpu": "[cyan]45%[/cyan]",
+                "gpu": "[magenta]78%[/magenta]",
+                "memory": "[yellow]2.3 GB[/yellow]",
+                "uptime": "2h 15m",
+            })
+            self._terminal_write("  Status: [green]Running[/green]")
+            self._terminal_write("  Started: 2025-11-25 10:30")
+            self._terminal_write("  CPU: [cyan]45%[/cyan]")
+            self._terminal_write("  GPU: [magenta]78%[/magenta]")
+            self._terminal_write("  Memory: [yellow]2.3 GB[/yellow]")
+            self._terminal_write("  Uptime: 2h 15m")
+            self._log("[blue]Status refreshed via terminal[/blue]")
+
+        elif command == "clear":
+            self.terminal_log.clear()
+            self._terminal_write("[dim]Terminal cleared[/dim]")
 
     def _run_action(self, action_id: str) -> None:
         # If disabled, show a small note and bail
