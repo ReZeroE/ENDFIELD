@@ -1,2 +1,4 @@
 # Arknights: Endfield CLI Toolkit
-> Development Status :: 1 - Planning
+> Development Status :: 2 - Pre-Alpha
+
+![Endfield](https://i.imgur.com/lCcEW8k.jpeg)
