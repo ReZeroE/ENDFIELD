@@ -1,5 +1,7 @@
 from datetime import datetime
 
+from rich.table import Table
+from tabulate import tabulate
 from textual.app import App, ComposeResult
 from textual.containers import Vertical, Horizontal
 from textual.widgets import (
@@ -16,17 +18,25 @@ from textual.widgets import (
     MarkdownViewer,
 )
 
+from test import SystemMonitor
+from constants import (
+    COLOR_BLACK,
+    COLOR_WHITE,
+    COLOR_TRANSPARENT,
+    COLOR_PRIMARY_BLUE,
+    COLOR_FOCUS_YELLOW,
+    COLOR_PURPLE_ACCENT,
+    COLOR_PINK_ACCENT,
+    COLOR_TEXT_GRAY,
+    COLOR_TEXT_DIM,
+    COLOR_TEXT_DISABLED,
+    COLOR_STATUS_GREEN,
+    COLOR_BG_DARK_SLATE,
+    COLOR_BG_DARKER,
+    COLOR_BG_SLATE,
+    COLOR_RED
+)
 
-ASCII_TITLE = r"""
-███████╗███╗   ██╗██████╗ ███████╗██╗███████╗██╗     ██████╗      ██████╗██╗     ██╗
-██╔════╝████╗  ██║██╔══██╗██╔════╝██║██╔════╝██║     ██╔══██╗    ██╔════╝██║     ██║
-█████╗  ██╔██╗ ██║██║  ██║█████╗  ██║█████╗  ██║     ██║  ██║    ██║     ██║     ██║
-██╔══╝  ██║╚██╗██║██║  ██║██╔══╝  ██║██╔══╝  ██║     ██║  ██║    ██║     ██║     ██║
-███████╗██║ ╚████║██████╔╝██║     ██║███████╗███████╗██████╔╝    ╚██████╗███████╗██║
-╚══════╝╚═╝  ╚═══╝╚═════╝ ╚═╝     ╚═╝╚══════╝╚══════╝╚═════╝      ╚═════╝╚══════╝╚═╝
-"""
-
-SUBTITLE = "[grey58]Developed by Kevin L.[/grey58]"
 
 # Organized actions by module
 ACTION_MODULES = {
@@ -44,6 +54,9 @@ ACTION_MODULES = {
     ],
     "☆ Other": [
         ("show_status", "ℹ  Show current game status"),
+    ],
+    "☆ Settings": [
+        ("dev_switch", "🐛 Toggle Dev Mode"),
     ],
     "☆ Miscellaneous": [],
 }
@@ -73,7 +86,8 @@ COMMANDS = [
     'start-game',
     'stop-game',
     'status',
-    'clear'
+    'clear',
+    'dev'
 ]
 
 
@@ -91,227 +105,275 @@ class EndfieldCLI(App):
         ("shift+tab", "focus_previous", "Previous panel")
     ]
 
-    CSS = """
-    Screen {
+    CSS = f"""
+    Screen {{
         layout: vertical;
-        background: black;
-        color: #7d807d; /* text color for the developed by text */
-        padding: 1 2;
-    }
+        background: {COLOR_BLACK};
+        color: {COLOR_TEXT_GRAY};
+        padding: 0 1 0 1;
+    }}
 
-    #title {
-        text-align: center;
-        color: #bd81e6; /* title ascii art */
+    #header {{
         height: auto;
-    }
-
-    #subtitle {
-        text-align: center;
-        height: auto;
+        background: {COLOR_BLACK};
+        color: {COLOR_WHITE};
+        padding: 1 1 0 1;
         margin-bottom: 1;
-    }
+    }}
 
-    #main {
+    #main {{
         layout: horizontal;
         height: 1fr;
-    }
+    }}
 
-    #left-column {
+    #left-column {{
         layout: vertical;
         width: 2fr;
         height: 1fr;
-    }
+    }}
 
-    #right-column {
+    #right-column {{
         layout: vertical;
         width: 5fr;
         height: 1fr;
-    }
+    }}
 
-    #top-row {
+    #top-row {{
         layout: horizontal;
         height: 1fr;
         margin-bottom: 1;
-    }
+    }}
 
     /* Game status tabbed area + logs tabbed area */
-    #status-tabbed {
-        border: round #54acff;
+    #status-tabbed {{
+        border: round {COLOR_PRIMARY_BLUE};
         padding: 1;
         height: 1fr;
         width: 1fr;
         margin-right: 1;
-        background: black;
-        color: #bbf7d0;
-    }
+        background: {COLOR_BLACK};
+        color: {COLOR_STATUS_GREEN};
+    }}
 
-    #status-tabbed:focus-within {
-        border: heavy #facc15;
-    }
+    #status-tabbed:focus-within {{
+        border: heavy {COLOR_FOCUS_YELLOW};
+    }}
 
-    #logs-tabbed {
-        border: round #54acff;
+    #logs-tabbed {{
+        border: round {COLOR_PRIMARY_BLUE};
         padding: 1;
         height: 1fr;
         width: 1fr;
         margin-left: 1;
-        background: black;
-    }
+        background: {COLOR_BLACK};
+    }}
 
-    #logs-tabbed:focus-within {
-        border: heavy #facc15;
-    }
+    #logs-tabbed:focus-within {{
+        border: heavy {COLOR_FOCUS_YELLOW};
+    }}
 
-    #logs-log, #logs-other-log {
-        background: black;
-    }
+    #logs-log, #logs-other-log {{
+        background: {COLOR_BLACK};
+    }}
+
+    #config-log {{
+        background: {COLOR_BLACK};
+    }}
 
     /* Quick Actions sidebar */
-    #quick-actions-tabbed {
-        border: round #54acff;
+    #quick-actions-tabbed {{
+        border: round {COLOR_PRIMARY_BLUE};
         padding: 1;
         height: 1fr;
         margin-right: 1;
-        background: black;
-    }
+        background: {COLOR_BLACK};
+    }}
 
-    #quick-actions-tabbed:focus-within {
-        border: heavy #facc15;
-    }
+    #quick-actions-tabbed:focus-within {{
+        border: heavy {COLOR_FOCUS_YELLOW};
+    }}
 
     /* CLI area */
-    #cli-area {
+    #cli-area {{
         layout: vertical;
         height: 1fr;
-    }
+    }}
 
-    #cli-tabbed {
-        border: round #54acff;
+    #cli-tabbed {{
+        border: round {COLOR_PRIMARY_BLUE};
         padding: 1;
         height: 1fr;
-        background: black;
-    }
+        background: {COLOR_BLACK};
+    }}
 
-    #cli-tabbed:focus-within {
-        border: heavy #facc15;
-    }
+    #cli-tabbed:focus-within {{
+        border: heavy {COLOR_FOCUS_YELLOW};
+    }}
 
     /* DataTable styling */
-    DataTable {
-        background: black;
+    DataTable {{
+        background: {COLOR_BLACK};
         height: 1fr;
-    }
+    }}
     
-    DataTable > .datatable--header {
-        background: #1e293b;
-        color: #94a3b8;
-    }
+    DataTable > .datatable--header {{
+        background: {COLOR_BG_DARK_SLATE};
+        color: {COLOR_TEXT_DIM};
+    }}
     
-    DataTable > .datatable--cursor {
-        background: transparent;
-    }
+    DataTable > .datatable--cursor {{
+        background: {COLOR_TRANSPARENT};
+    }}
 
     /* MarkdownViewer styling */
-    MarkdownViewer {
-        background: black;
+    MarkdownViewer {{
+        background: {COLOR_BLACK};
         height: 1fr;
-    }
+    }}
 
     /* Tree widget styling */
-    Tree {
-        background: black;
+    Tree {{
+        background: {COLOR_BLACK};
         height: 1fr;
-    }
+    }}
 
-    Tree > .tree--label {
-        background: transparent;
-    }
+    Tree > .tree--label {{
+        background: {COLOR_TRANSPARENT};
+    }}
 
-    Tree > .tree--guides {
-        color: #475569;
-    }
+    Tree > .tree--guides {{
+        color: {COLOR_BG_SLATE};
+    }}
 
-    Tree > .tree--cursor {
-        background: #1e293b;
-    }
+    Tree > .tree--cursor {{
+        background: {COLOR_BG_DARK_SLATE};
+    }}
 
-    Tree > .tree--highlight {
-        background: #1e293b;
-    }
+    Tree > .tree--highlight {{
+        background: {COLOR_BG_DARK_SLATE};
+    }}
 
-    #actions-list {
-        height: 1fr;
-        overflow-y: auto;
-    }
-
-    #links-list {
+    #actions-list {{
         height: 1fr;
         overflow-y: auto;
-    }
+    }}
 
-    ListView > ListItem.section-header {
+    #links-list {{
+        height: 1fr;
+        overflow-y: auto;
+    }}
+
+    ListView > ListItem.section-header {{
         padding: 1 1;
         margin-top: 1;
-        background: transparent;
-        color: #54acff;
-    }
+        background: {COLOR_TRANSPARENT};
+        color: {COLOR_PRIMARY_BLUE};
+    }}
 
-    ListView > ListItem.section-header:hover {
-        background: transparent;
-    }
+    ListView > ListItem.section-header:hover {{
+        background: {COLOR_TRANSPARENT};
+    }}
 
-    ListView > ListItem.section-header.--highlight {
-        background: transparent;
-        color: #54acff;
+    ListView > ListItem.section-header.--highlight {{
+        background: {COLOR_TRANSPARENT};
+        color: {COLOR_PRIMARY_BLUE};
         text-style: none;
-    }
+    }}
 
-    ListView > ListItem {
+    ListView > ListItem {{
         padding: 0 1;
-    }
+    }}
 
-    ListView > ListItem.--highlight {
-        background: #1e293b;
-        color: #facc15;
+    ListView > ListItem.--highlight {{
+        background: {COLOR_BG_DARK_SLATE};
+        color: {COLOR_FOCUS_YELLOW};
         text-style: bold;
-    }
+    }}
 
     /* Disabled actions: gray text, even when highlighted */
-    ListView > ListItem.disabled {
-        color: #6b7280;
-    }
+    ListView > ListItem.disabled {{
+        color: {COLOR_TEXT_DISABLED};
+    }}
 
-    ListView > ListItem.disabled.--highlight {
-        background: #111827;
-        color: #6b7280;
+    ListView > ListItem.disabled.--highlight {{
+        background: {COLOR_BG_DARKER};
+        color: {COLOR_TEXT_DISABLED};
         text-style: none;
-    }
+    }}
 
     /* Terminal pane styling */
-    #terminal-pane {
+    #terminal-pane {{
         layout: vertical;
         height: 1fr;
-    }
+    }}
 
-    #terminal-log {
-        background: black;
+    #terminal-log {{
+        background: {COLOR_BLACK};
         border: none;
         overflow-y: auto;
         height: 1fr;
-        margin-bottom: 1;
-    }
+        margin-bottom: 0;
+        padding: 1 1 0 1;
+    }}
 
-    #terminal-input {
-        background: black;
-        border: heavy #64748b;
-        padding: 0 1;
+    #terminal-input-container {{
+        layout: horizontal;
         height: auto;
-        color: white;
-    }
+        background: {COLOR_BLACK};
+        padding: 0 0 0 1;
+        margin: 0;
+        border: round {COLOR_BG_DARK_SLATE};
+    }}
 
-    #terminal-input:focus {
-        border: heavy #64748b;
-    }
+    #terminal-prompt {{
+        background: {COLOR_BLACK};
+        color: {COLOR_PRIMARY_BLUE};
+        width: auto;
+        height: 1;
+        padding: 0 1 0 0;
+        margin: 0;
+    }}
+
+    #terminal-input {{
+        background: {COLOR_BLACK};
+        border: none;
+        padding: 0;
+        height: 1;
+        color: {COLOR_WHITE};
+        width: 1fr;
+        margin: 0;
+    }}
+
+    #terminal-input:focus {{
+        background: {COLOR_BLACK};
+        border: none;
+    }}
+
+    #terminal-input > .input--cursor {{
+        background: {COLOR_PRIMARY_BLUE};
+        color: {COLOR_BLACK};
+    }}
+
+    #terminal-info-icon {{
+        background: {COLOR_BLACK};
+        color: {COLOR_PRIMARY_BLUE};
+        width: auto;
+        height: 1;
+        margin: 0 1 0 0;
+    }}
+
+    #terminal-info-icon:hover {{
+        color: {COLOR_FOCUS_YELLOW};
+        text-style: bold;
+        margin: 0 1 0 0;
+    }}
+
+    #footer {{
+        height: auto;
+        background: {COLOR_BLACK};
+        color: {COLOR_TEXT_GRAY};
+        padding: 0 1 0 1;
+    }}
     """
 
     def __init__(self, **kwargs):
@@ -321,13 +383,18 @@ class EndfieldCLI(App):
         # Terminal command history
         self.terminal_history: list[str] = []
         self.history_index: int = -1
+        # System monitor for host info
+        self.system_monitor = SystemMonitor()
+        # Track if host info tab is active
+        self.host_info_tab_active: bool = False
+        # Dev mode flag
+        self.dev_mode: bool = False
 
     # ---------- Layout ----------
 
     def compose(self) -> ComposeResult:
-        # Header
-        yield Static(ASCII_TITLE.strip("\n"), id="title")
-        yield Static(SUBTITLE, id="subtitle")
+        # Header - custom static with left and right aligned text
+        yield Static(id="header")
 
         with Horizontal(id="main"):
             # Left column: Quick Actions
@@ -369,8 +436,6 @@ class EndfieldCLI(App):
                     with TabbedContent(id="status-tabbed"):
                         with TabPane("Live Game Status", id="live-pane"):
                             yield DataTable(id="status-live", show_header=False, cursor_type="none")
-                        with TabPane("Game Info", id="game-pane"):
-                            yield MarkdownViewer(id="status-game", show_table_of_contents=False)
                         with TabPane("Host Info", id="host-pane"):
                             yield DataTable(id="status-host", show_header=False, cursor_type="none")
 
@@ -378,24 +443,28 @@ class EndfieldCLI(App):
                     with TabbedContent(id="logs-tabbed"):
                         with TabPane("Logs", id="logs-pane"):
                             yield RichLog(id="logs-log", markup=True, highlight=False)
-                        with TabPane("Configuration", id="logs-other-pane"):
-                            yield RichLog(
-                                id="logs-other-log",
-                                markup=True,
-                                highlight=False,
-                            )
+                        with TabPane("Configuration", id="config-pane"):
+                            yield RichLog(id="config-log", markup=True, highlight=False)
 
                 # Bottom: CLI area
                 with Vertical(id="cli-area"):
                     with TabbedContent(id="cli-tabbed"):
                         with TabPane("Terminal", id="terminal-pane"):
                             yield RichLog(id="terminal-log", markup=True, highlight=False)
-                            yield Input(
-                                placeholder="Type a command...",
-                                id="terminal-input",
-                            )
+                            with Horizontal(id="terminal-input-container"):
+                                yield Static(">", id="terminal-prompt")
+                                yield Input(
+                                    placeholder="start-game",
+                                    id="terminal-input",
+                                )
+                                yield Static("ⓘ", id="terminal-info-icon")
+                        with TabPane("Game Info", id="game-pane"):
+                            yield MarkdownViewer(id="status-game", show_table_of_contents=False)
                         with TabPane("Help", id="help-pane"):
                             yield MarkdownViewer(id="help-viewer", show_table_of_contents=False)
+
+        # Footer
+        yield Static(id="footer")
 
     # ---------- Widget helpers ----------
 
@@ -415,6 +484,11 @@ class EndfieldCLI(App):
     def logs_panel(self) -> RichLog:
         # main Logs tab log
         return self.query_one("#logs-log", RichLog)
+
+    @property
+    def config_log(self) -> RichLog:
+        # Configuration tab log
+        return self.query_one("#config-log", RichLog)
 
     @property
     def other_logs_panel(self) -> RichLog:
@@ -444,6 +518,32 @@ class EndfieldCLI(App):
     # ---------- Initialization ----------
 
     def on_mount(self) -> None:
+        # Populate header with title and author
+        header = self.query_one("#header", Static)
+        header_table = Table.grid(expand=True)
+        header_table.add_column(justify="left")
+        header_table.add_column(justify="right")
+        
+        # Build title with dev mode indicator
+        title_left = f"[bold {COLOR_PURPLE_ACCENT}]ARKNIGHTS:ENDFIELD CLI[/bold {COLOR_PURPLE_ACCENT}] [dim]v1.0.0[/dim]"
+        if self.dev_mode:
+            title_left += f" [white][[/white][{COLOR_RED}]DEV MODE[/{COLOR_RED}][white]][/white]"
+        
+        header_table.add_row(
+            title_left,
+            "[dim]Developed by Kevin L.[/dim]"
+        )
+        header.update(header_table)
+
+        # Populate footer with navigation instructions
+        footer = self.query_one("#footer", Static)
+        footer_table = Table.grid(expand=True)
+        footer_table.add_column(justify="center")
+        footer_table.add_row(
+            "[dim]Tab[/dim] change panel  •  [dim]j/k[/dim] or [dim]arrow keys[/dim] navigate up and down  •  [dim]ctrl+q[/dim] to quit"
+        )
+        footer.update(footer_table)
+
         # Border titles
         quick_actions_tabbed = self.query_one("#quick-actions-tabbed", TabbedContent)
         quick_actions_tabbed.border_title = "Quick Actions"
@@ -451,12 +551,12 @@ class EndfieldCLI(App):
 
         status_tabbed = self.query_one("#status-tabbed", TabbedContent)
         status_tabbed.border_title = "Game Status"
-        status_tabbed.border_subtitle = "[#bd81e6][SHIFT+R] REFRESH[/#bd81e6]"
+        status_tabbed.border_subtitle = f"[{COLOR_PURPLE_ACCENT}][SHIFT+R] REFRESH[/{COLOR_PURPLE_ACCENT}]"
         status_tabbed.can_focus = False
 
         logs_tabbed = self.query_one("#logs-tabbed", TabbedContent)
         logs_tabbed.border_title = "CLI Control"
-        logs_tabbed.border_subtitle = "[#bd81e6][SHIFT+C] CLEAR[/#bd81e6]"
+        logs_tabbed.border_subtitle = f"[{COLOR_PURPLE_ACCENT}][SHIFT+C] CLEAR[/{COLOR_PURPLE_ACCENT}]"
         logs_tabbed.can_focus = False
 
         cli_tabbed = self.query_one("#cli-tabbed", TabbedContent)
@@ -482,20 +582,77 @@ class EndfieldCLI(App):
         self._init_help_content()
 
         # Show welcome message in terminal
-        self._terminal_write("[bold cyan]ENDFIELD Terminal[/bold cyan]")
-        self._terminal_write("[dim]Type 'help' to see available commands[/dim]")
+        self._terminal_write("[bold cyan]ENDFIELD CLI Interactive Terminal[/bold cyan]", system=False)
+        self._terminal_write("[dim] - Type 'help' to see available commands[/dim]", system=False)
+        self._terminal_write("")  # Empty line
         
         # Focus the actions tree by default (left panel)
         self.call_after_refresh(lambda: self.actions_tree.focus())
+        
+        # Start updating host info every 3 seconds
+        self.set_interval(3, self._update_host_info_table)
+        
+        # Initialize configuration display
+        self._refresh_config_display()
+
+    def _refresh_config_display(self) -> None:
+        """Refresh the configuration display with current settings."""
+        self.config_log.clear()
+        
+        # Create settings table using tabulate
+        settings_data = [
+            ["Dev Mode", "[green]ON[/green]" if self.dev_mode else "[red]OFF[/red]"],
+        ]
+        
+        table = tabulate(settings_data, headers=["Setting", "Value"], tablefmt="simple")
+        
+        self.config_log.write("[bold cyan]Application Settings[/bold cyan]")
+        self.config_log.write("")
+        self.config_log.write(table)
+        self.config_log.write("")
+        self.config_log.write("[dim]Use Quick Actions > Settings to toggle settings[/dim]")
+        self.config_log.write("[dim]Or use 'dev' command in terminal[/dim]")
 
     def on_tabbed_content_tab_activated(self, event: TabbedContent.TabActivated) -> None:
-        """Auto-focus terminal input when Terminal tab is activated."""
+        """Handle tab activation events."""
         if event.pane.id == "terminal-pane":
-            # Use call_after_refresh to ensure the widget is ready
+            # Focus the terminal input
             self.call_after_refresh(self._focus_terminal_input)
-        elif event.pane.id == "links-pane":
+            
+        if event.pane.id == "links-pane":
             # Auto-select first item in links list for j/k navigation
             self.call_after_refresh(self._focus_links_list)
+        
+        # Track Host Info tab activation for lazy loading
+        if event.pane.id == "host-pane":
+            self.host_info_tab_active = True
+            # Immediately update when tab is activated
+            self._update_host_info_table()
+        elif event.tabbed_content.id == "status-tabbed":
+            # If switching away from host pane within status-tabbed
+            self.host_info_tab_active = False
+    
+    def on_focus(self, event) -> None:
+        """Auto-focus terminal input when terminal-related widgets get focus."""
+        if hasattr(event.widget, 'id'):
+            widget_id = event.widget.id
+            
+            # Focus input when cli-tabbed gets focus and Terminal tab is active
+            if widget_id == "cli-tabbed":
+                try:
+                    cli_tabbed = self.query_one("#cli-tabbed", TabbedContent)
+                    if cli_tabbed.active == "terminal-pane":
+                        self.call_after_refresh(self._focus_terminal_input)
+                except Exception:
+                    pass
+            
+            # Focus input when terminal pane is focused
+            elif widget_id == "terminal-pane":
+                self.call_after_refresh(self._focus_terminal_input)
+            
+            # Focus input when terminal log (RichLog content) is focused
+            elif widget_id == "terminal-log":
+                self.call_after_refresh(self._focus_terminal_input)
     
     def on_blur(self, event) -> None:
         """Handle blur events to clear tree selection when Quick Actions loses focus."""
@@ -515,7 +672,7 @@ class EndfieldCLI(App):
         try:
             self.terminal_input.focus()
         except Exception:
-            pass  # Widget might not be ready yet
+            pass
     
     def _focus_links_list(self) -> None:
         """Focus the links list and select first non-header item."""
@@ -571,22 +728,51 @@ class EndfieldCLI(App):
         ])
 
         # Game Info
-        game_info_markdown = """
+        game_info_markdown = r"""
 | Property | Value |
 |----------|-------|
 | Game     | ENDFIELD |
 | Version  | dev |
 | Engine   | Unity |
-| Path  | D:\Workspace\Endfield\\Workspace\Endfield\\test.txt |
+| Path  | D:\Workspace\Endfield\Workspace\Endfield\test.txt |
 """
         self.game_info_viewer.document.update(game_info_markdown)
 
-        # Host Info
+        # Host Info - Initialize with system information
+        self._init_host_info_table()
+
+    def _init_host_info_table(self) -> None:
+        """Initialize the Host Info table with system information."""
+        info = self.system_monitor.get_all_info()
         self.host_status_table.add_columns("Property", "Value")
         self.host_status_table.add_rows([
-            ("Host", "[dim]unknown[/dim]"),
-            ("OS", "[dim]unknown[/dim]"),
+            ("Host", info["host"]),
+            ("OS", info["os"]),
+            ("Arch", info["arch"]),
+            ("CPU", f"[cyan]{info['cpu']}[/cyan]"),
+            ("GPU", f"[magenta]{info['gpu']}[/magenta]"),
+            ("RAM", f"[yellow]{info['ram']}[/yellow]"),
         ])
+    
+    def _update_host_info_table(self) -> None:
+        """Update the dynamic parts of the Host Info table (CPU, GPU, RAM) - only when tab is active."""
+        # Only update if the Host Info tab is currently active
+        if not self.host_info_tab_active:
+            return
+        
+        info = self.system_monitor.get_all_info()
+        self.host_status_table.clear()
+        self.host_status_table.add_rows([
+            ("Host", info["host"]),
+            ("OS", info["os"]),
+            ("Arch", info["arch"]),
+            ("CPU", f"[cyan]{info['cpu']}[/cyan]"),
+            ("GPU", f"[magenta]{info['gpu']}[/magenta]"),
+            ("RAM", f"[yellow]{info['ram']}[/yellow]"),
+        ])
+        
+        # Log the system info update
+        self._log(f"[dim]System info updated.[/dim]", dev_only=True)
 
     def _init_help_content(self) -> None:
         """Initialize the Help tab content."""
@@ -601,6 +787,7 @@ class EndfieldCLI(App):
 - `stop-game` - Stop the game
 - `status` - Show current game status
 - `clear` - Clear the terminal
+- `dev` - Toggle dev mode on/off
 
 ## Keyboard Shortcuts
 
@@ -611,8 +798,12 @@ class EndfieldCLI(App):
 - `q` - Quit application
 
 ### Terminal
+- Click on the Terminal tab or press Tab to navigate to it
+- Type commands directly in the terminal (no input box needed)
 - `↑` (Up Arrow) - Navigate backward in command history
 - `↓` (Down Arrow) - Navigate forward in command history
+- `Backspace` - Delete last character
+- `Enter` - Execute command
 
 ### Panel Actions
 - `SHIFT+C` - Clear logs panel
@@ -655,12 +846,30 @@ Quick access to:
     def _formatted_now(self) -> str:
         """Return current date/time in 'Nov.15 2024 13:03' format."""
         now = datetime.now()
-        return f"[#cf5990]{now.strftime('%b.%d %Y %H:%M')}[/#cf5990]"
+        return f"[{COLOR_PINK_ACCENT}]{now.strftime('%b.%d %Y %H:%M')}[/{COLOR_PINK_ACCENT}]"
 
     def _update_cli_datetime(self) -> None:
         """Refresh the bottom-right subtitle on the CLI border."""
         # Keep the SHIFT+T clear terminal instruction
         # (removed datetime update as it would conflict with the clear instruction)
+
+    def _update_header(self) -> None:
+        """Update the header to reflect current dev mode status."""
+        header = self.query_one("#header", Static)
+        header_table = Table.grid(expand=True)
+        header_table.add_column(justify="left")
+        header_table.add_column(justify="right")
+        
+        # Build title with dev mode indicator
+        title_left = f"[bold {COLOR_PURPLE_ACCENT}]ARKNIGHTS:ENDFIELD CLI[/bold {COLOR_PURPLE_ACCENT}] [dim]v1.0.0[/dim]"
+        if self.dev_mode:
+            title_left += f" [white][[/white][{COLOR_RED}]DEV MODE[/{COLOR_RED}][white]][/white]"
+        
+        header_table.add_row(
+            title_left,
+            "[dim]Developed by Kevin L.[/dim]"
+        )
+        header.update(header_table)
 
     # ---------- Public toast method ----------
 
@@ -799,42 +1008,50 @@ Quick access to:
     # ---------- CLI input handling ----------
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
+        """Handle terminal command submission."""
         if event.input.id == "terminal-input":
             cmd = event.value.strip()
             
             if not cmd:
-                # Just clear and return for empty command
-                event.input.value = ""
                 return
+
+            # Display the command that was entered
+            self._terminal_write(f"[{COLOR_PRIMARY_BLUE}]>[/{COLOR_PRIMARY_BLUE}] {cmd}", system=False)
 
             # Add to history
             self.terminal_history.append(cmd)
             self.history_index = len(self.terminal_history)
 
-            # Display command in terminal with prompt
-            self._terminal_write(f"[#54acff]$[/#54acff] {cmd}")
-
-            # Execute command (will write output and new prompt)
+            # Execute command
             self._execute_terminal_command(cmd)
 
             # Clear input
             event.input.value = ""
 
+    def on_click(self, event) -> None:
+        """Handle clicks on terminal area and info icon."""
+        if hasattr(event.widget, 'id'):
+            widget_id = event.widget.id
+            
+            # Show tooltip when clicking on info icon
+            if widget_id == "terminal-info-icon":
+                self.show_toast(
+                    "1. Use ↑/↓ for history.\n2. Type 'help' for available commands.\n3. Unix terminal keybindings supported.",
+                    title="Terminal Help",
+                    severity=self.ToastSeverity.INFORMATION,
+                    timeout=4.0
+                )
+            
+            # Focus input when clicking on terminal log
+            elif widget_id == "terminal-log":
+                self._focus_terminal_input()
+            
+            # Focus input when clicking on terminal pane
+            elif widget_id == "terminal-pane":
+                self._focus_terminal_input()
+
     def on_key(self, event) -> None:
-        """Handle up/down arrows for command history in terminal and tab navigation."""
-        # Handle tab and shift+tab for panel navigation only
-        if event.key == "tab":
-            self.action_focus_next()
-            event.prevent_default()
-            event.stop()
-            return
-        elif event.key == "shift+tab":
-            self.action_focus_previous()
-            event.prevent_default()
-            event.stop()
-            return
-        
-        # Handle terminal history navigation
+        """Handle up/down arrows for command history in terminal."""
         terminal_input = self.terminal_input
         
         # Only handle if terminal input is focused
@@ -882,13 +1099,24 @@ Quick access to:
 
     # ---------- Helpers ----------
 
-    def _log(self, msg: str) -> None:
-        """Write markup-capable text to the main Logs RichLog."""
-        self.logs_panel.write(f"[[#bd81e6]EF[/#bd81e6]] {msg}")
+    def _log(self, msg: str, dev_only: bool = False) -> None:
+        """Write markup-capable text to the main Logs RichLog.
+        
+        Args:
+            msg: The message to log
+            dev_only: If True, only log when dev_mode is enabled
+        """
+        # Only log dev-only messages if dev mode is on
+        if dev_only and not self.dev_mode:
+            return
+        self.logs_panel.write(f"[[{COLOR_PURPLE_ACCENT}]EF[/{COLOR_PURPLE_ACCENT}]] {msg}")
 
-    def _terminal_write(self, msg: str) -> None:
+    def _terminal_write(self, msg: str, system: bool = True) -> None:
         """Write markup-capable text to the terminal RichLog."""
-        self.terminal_log.write(msg)
+        prefix = ''
+        if (msg and system):
+            prefix = f"[[{COLOR_PURPLE_ACCENT}]EF[/{COLOR_PURPLE_ACCENT}]] "
+        self.terminal_log.write(f"{prefix}{msg}")
 
     def _set_live_status(self, data: dict[str, str]) -> None:
         """Convenience: update the Live Game Status tab with new data."""
@@ -905,8 +1133,7 @@ Quick access to:
 
         # Check if command is supported
         if command not in COMMANDS:
-            self._terminal_write(f"[red]Error:[/red] Unknown command '{command}'")
-            self._terminal_write(f"[dim]Type 'help' to see available commands[/dim]")
+            self._terminal_write(f"[red]Error:[/red] Unknown command '{command}' [dim]Type 'help' to see available commands[/dim]")
             return
 
         # Execute the command
@@ -916,6 +1143,17 @@ Quick access to:
             self._terminal_write("  [cyan]start-game[/cyan]  - Start the game")
             self._terminal_write("  [cyan]stop-game[/cyan]   - Stop the game")
             self._terminal_write("  [cyan]status[/cyan]      - Show current game status")
+            self._terminal_write("  [cyan]dev[/cyan]         - Toggle dev mode")
+            self._terminal_write("  [cyan]clear[/cyan]       - Clear terminal")
+
+        elif command == "dev":
+            self.dev_mode = not self.dev_mode
+            status = "enabled" if self.dev_mode else "disabled"
+            self._terminal_write(f"[cyan]Dev mode {status}[/cyan]")
+            self.show_toast(f"Dev mode {status}", severity=self.ToastSeverity.INFORMATION)
+            self._refresh_config_display()
+            # Update header to show/hide dev mode indicator
+            self._update_header()
 
         elif command == "start-game":
             self._terminal_write("[green]Starting game...[/green]")
@@ -1018,11 +1256,21 @@ Quick access to:
             self._log("⏰ Would open scheduling UI for stop (stub).")
             self.show_toast("Scheduled stop (stub)", severity=self.ToastSeverity.WARNING)
 
+        elif action_id == "dev_switch":
+            self.dev_mode = not self.dev_mode
+            status = "enabled" if self.dev_mode else "disabled"
+            self.show_toast(f"Dev mode {status}", severity=self.ToastSeverity.INFORMATION)
+            self._refresh_config_display()
+            # Update header to show/hide dev mode indicator
+            self._update_header()
+
         else:
             self._log("[red]Not implemented yet[/red]")
 
 
 if __name__ == "__main__":
+    print("Starting ENDFIELD CLI...")
+    
     app = EndfieldCLI()
 
     # Example: start with "show_status" disabled
